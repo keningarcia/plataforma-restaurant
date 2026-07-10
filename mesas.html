@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesas - Plataforma Restaurant</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">Gestión de Mesas</a>
+            <div class="d-flex align-items-center gap-2">
+                <a href="dashboard.html" class="btn btn-outline-light btn-sm">Volver</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <div class="row">
+            <div class="col-lg-4 mb-4">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0" id="formTitle">Nueva Mesa</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="tableForm">
+                            <input type="hidden" id="editId">
+                            <div class="mb-3">
+                                <label for="tableNumber" class="form-label">Número de mesa</label>
+                                <input type="number" class="form-control" id="tableNumber" min="1" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="tableCapacity" class="form-label">Capacidad (personas)</label>
+                                <input type="number" class="form-control" id="tableCapacity" min="1" value="4" required>
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-primary" id="saveBtn">Guardar Mesa</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="cancelEditBtn" style="display:none">Cancelar Edición</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div id="tablesContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEYS = { tables: 'restaurant_tables', orders: 'restaurant_orders' };
+
+        function getTables() {
+            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.tables)) || []; } catch { return []; }
+        }
+
+        function saveTables(tables) {
+            localStorage.setItem(STORAGE_KEYS.tables, JSON.stringify(tables));
+        }
+
+        function getOrders() {
+            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.orders)) || []; } catch { return []; }
+        }
+
+        function getNextId() {
+            const tables = getTables();
+            return tables.length > 0 ? Math.max(...tables.map(t => t.id)) + 1 : 1;
+        }
+
+        function seedDefaultTables() {
+            const tables = getTables();
+            if (tables.length > 0) return;
+            const defaults = [
+                { id: 1, number: 1, capacity: 4 },
+                { id: 2, number: 2, capacity: 4 },
+                { id: 3, number: 3, capacity: 2 },
+                { id: 4, number: 4, capacity: 6 },
+                { id: 5, number: 5, capacity: 4 },
+                { id: 6, number: 6, capacity: 2 },
+                { id: 7, number: 7, capacity: 8 },
+                { id: 8, number: 8, capacity: 4 }
+            ];
+            saveTables(defaults);
+        }
+
+        function renderTables() {
+            const tables = getTables();
+            const orders = getOrders();
+            const occupiedTables = new Set(orders.map(o => o.table));
+            const container = document.getElementById('tablesContainer');
+
+            container.innerHTML = tables.length === 0
+                ? '<p class="text-muted">No hay mesas registradas.</p>'
+                : `<div class="row g-3">
+                    ${tables.map(t => {
+                        const occupied = occupiedTables.has(t.number);
+                        return `
+                            <div class="col-md-4">
+                                <div class="card shadow-sm ${occupied ? 'border-warning' : ''}">
+                                    <div class="card-body text-center">
+                                        <h2 class="mb-1">${occupied ? '&#x1F6AB;' : '&#x2705;'}</h2>
+                                        <h4 class="mb-1">Mesa ${t.number}</h4>
+                                        <p class="text-muted small mb-2">Capacidad: ${t.capacity} personas</p>
+                                        <span class="badge ${occupied ? 'bg-warning text-dark' : 'bg-success'} mb-2">
+                                            ${occupied ? 'Ocupada' : 'Libre'}
+                                        </span>
+                                        <div class="d-flex justify-content-center gap-2 mt-2">
+                                            <button class="btn btn-sm btn-outline-primary edit-table" data-id="${t.id}">Editar</button>
+                                            <button class="btn btn-sm btn-outline-danger delete-table" data-id="${t.id}" ${occupied ? 'disabled' : ''}>Eliminar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>`;
+        }
+
+        document.getElementById('tableForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const editId = document.getElementById('editId').value;
+            const number = parseInt(document.getElementById('tableNumber').value);
+            const capacity = parseInt(document.getElementById('tableCapacity').value);
+
+            let tables = getTables();
+
+            const dup = tables.find(t => t.number === number && (!editId || t.id !== parseInt(editId)));
+            if (dup) {
+                alert('Ya existe una mesa con ese número.');
+                return;
+            }
+
+            if (editId) {
+                const idx = tables.findIndex(t => t.id === parseInt(editId));
+                if (idx !== -1) { tables[idx] = { ...tables[idx], number, capacity }; }
+                document.getElementById('formTitle').textContent = 'Nueva Mesa';
+                document.getElementById('saveBtn').textContent = 'Guardar Mesa';
+                document.getElementById('cancelEditBtn').style.display = 'none';
+                document.getElementById('editId').value = '';
+            } else {
+                tables.push({ id: getNextId(), number, capacity });
+            }
+            saveTables(tables);
+            this.reset();
+            document.getElementById('tableCapacity').value = 4;
+            renderTables();
+        });
+
+        document.getElementById('cancelEditBtn').addEventListener('click', function () {
+            document.getElementById('formTitle').textContent = 'Nueva Mesa';
+            document.getElementById('saveBtn').textContent = 'Guardar Mesa';
+            document.getElementById('cancelEditBtn').style.display = 'none';
+            document.getElementById('tableForm').reset();
+            document.getElementById('editId').value = '';
+            document.getElementById('tableCapacity').value = 4;
+        });
+
+        document.getElementById('tablesContainer').addEventListener('click', function (e) {
+            const tables = getTables();
+
+            const editBtn = e.target.closest('.edit-table');
+            if (editBtn) {
+                const id = parseInt(editBtn.dataset.id);
+                const table = tables.find(t => t.id === id);
+                if (table) {
+                    document.getElementById('editId').value = table.id;
+                    document.getElementById('tableNumber').value = table.number;
+                    document.getElementById('tableCapacity').value = table.capacity;
+                    document.getElementById('formTitle').textContent = 'Editar Mesa';
+                    document.getElementById('saveBtn').textContent = 'Actualizar Mesa';
+                    document.getElementById('cancelEditBtn').style.display = 'block';
+                }
+                return;
+            }
+
+            const deleteBtn = e.target.closest('.delete-table');
+            if (deleteBtn) {
+                const id = parseInt(deleteBtn.dataset.id);
+                if (confirm('¿Eliminar esta mesa?')) {
+                    saveTables(tables.filter(t => t.id !== id));
+                    renderTables();
+                }
+            }
+        });
+
+        seedDefaultTables();
+        renderTables();
+    </script>
+</body>
+</html>

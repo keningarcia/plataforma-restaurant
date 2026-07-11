@@ -48,46 +48,22 @@
         </div>
     </div>
 
+    <script src="api.js"></script>
     <script>
-        const STORAGE_KEYS = { tables: 'restaurant_tables', orders: 'restaurant_orders' };
+        if (!api.getToken()) { window.location.href = 'index.html'; }
 
-        function getTables() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.tables)) || []; } catch { return []; }
+        let tablesCache = [];
+
+        async function loadTables() {
+            tablesCache = await api.tables.getAll();
+            renderTables();
         }
 
-        function saveTables(tables) {
-            localStorage.setItem(STORAGE_KEYS.tables, JSON.stringify(tables));
-        }
-
-        function getOrders() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.orders)) || []; } catch { return []; }
-        }
-
-        function getNextId() {
-            const tables = getTables();
-            return tables.length > 0 ? Math.max(...tables.map(t => t.id)) + 1 : 1;
-        }
-
-        function seedDefaultTables() {
-            const tables = getTables();
-            if (tables.length > 0) return;
-            const defaults = [
-                { id: 1, number: 1, capacity: 4 },
-                { id: 2, number: 2, capacity: 4 },
-                { id: 3, number: 3, capacity: 2 },
-                { id: 4, number: 4, capacity: 6 },
-                { id: 5, number: 5, capacity: 4 },
-                { id: 6, number: 6, capacity: 2 },
-                { id: 7, number: 7, capacity: 8 },
-                { id: 8, number: 8, capacity: 4 }
-            ];
-            saveTables(defaults);
-        }
-
-        function renderTables() {
-            const tables = getTables();
-            const orders = getOrders();
-            const occupiedTables = new Set(orders.map(o => o.table));
+        async function renderTables() {
+            const tables = tablesCache;
+            let orders = [];
+            try { orders = await api.orders.getAll(); } catch {}
+            const occupiedTables = new Set(orders.map(o => o.table_number));
             const container = document.getElementById('tablesContainer');
 
             container.innerHTML = tables.length === 0
@@ -117,34 +93,28 @@
                 </div>`;
         }
 
-        document.getElementById('tableForm').addEventListener('submit', function (e) {
+        document.getElementById('tableForm').addEventListener('submit', async function (e) {
             e.preventDefault();
             const editId = document.getElementById('editId').value;
             const number = parseInt(document.getElementById('tableNumber').value);
             const capacity = parseInt(document.getElementById('tableCapacity').value);
 
-            let tables = getTables();
-
-            const dup = tables.find(t => t.number === number && (!editId || t.id !== parseInt(editId)));
-            if (dup) {
-                alert('Ya existe una mesa con ese número.');
-                return;
+            try {
+                if (editId) {
+                    await api.tables.update(editId, { number, capacity });
+                    document.getElementById('formTitle').textContent = 'Nueva Mesa';
+                    document.getElementById('saveBtn').textContent = 'Guardar Mesa';
+                    document.getElementById('cancelEditBtn').style.display = 'none';
+                    document.getElementById('editId').value = '';
+                } else {
+                    await api.tables.create({ number, capacity });
+                }
+                this.reset();
+                document.getElementById('tableCapacity').value = 4;
+                await loadTables();
+            } catch (err) {
+                alert(err.message);
             }
-
-            if (editId) {
-                const idx = tables.findIndex(t => t.id === parseInt(editId));
-                if (idx !== -1) { tables[idx] = { ...tables[idx], number, capacity }; }
-                document.getElementById('formTitle').textContent = 'Nueva Mesa';
-                document.getElementById('saveBtn').textContent = 'Guardar Mesa';
-                document.getElementById('cancelEditBtn').style.display = 'none';
-                document.getElementById('editId').value = '';
-            } else {
-                tables.push({ id: getNextId(), number, capacity });
-            }
-            saveTables(tables);
-            this.reset();
-            document.getElementById('tableCapacity').value = 4;
-            renderTables();
         });
 
         document.getElementById('cancelEditBtn').addEventListener('click', function () {
@@ -156,13 +126,11 @@
             document.getElementById('tableCapacity').value = 4;
         });
 
-        document.getElementById('tablesContainer').addEventListener('click', function (e) {
-            const tables = getTables();
-
+        document.getElementById('tablesContainer').addEventListener('click', async function (e) {
             const editBtn = e.target.closest('.edit-table');
             if (editBtn) {
                 const id = parseInt(editBtn.dataset.id);
-                const table = tables.find(t => t.id === id);
+                const table = tablesCache.find(t => t.id === id);
                 if (table) {
                     document.getElementById('editId').value = table.id;
                     document.getElementById('tableNumber').value = table.number;
@@ -178,14 +146,17 @@
             if (deleteBtn) {
                 const id = parseInt(deleteBtn.dataset.id);
                 if (confirm('¿Eliminar esta mesa?')) {
-                    saveTables(tables.filter(t => t.id !== id));
-                    renderTables();
+                    try {
+                        await api.tables.delete(id);
+                        await loadTables();
+                    } catch (err) {
+                        alert(err.message);
+                    }
                 }
             }
         });
 
-        seedDefaultTables();
-        renderTables();
+        loadTables();
     </script>
 </body>
 </html>

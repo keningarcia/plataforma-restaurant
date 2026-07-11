@@ -75,56 +75,22 @@
         </div>
     </div>
 
+    <script src="api.js"></script>
     <script>
-        const STORAGE_KEYS = { menu: 'restaurant_menu' };
-
-        function getMenu() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.menu)) || []; } catch { return []; }
-        }
-
-        function saveMenu(menu) {
-            localStorage.setItem(STORAGE_KEYS.menu, JSON.stringify(menu));
-        }
+        if (!api.getToken()) { window.location.href = 'index.html'; }
 
         let currentCategory = 'entradas';
+        let menuCache = [];
 
-        function seedDefaultMenu() {
-            const menu = getMenu();
-            if (menu.length > 0) return;
-            const defaults = [
-                { id: 1, name: 'Ceviche Clásico', category: 'entradas', price: 28.00, available: true },
-                { id: 2, name: 'Papas a la Huancaína', category: 'entradas', price: 18.00, available: true },
-                { id: 3, name: 'Tequeños (6 und)', category: 'entradas', price: 15.00, available: true },
-                { id: 4, name: 'Ensalada César', category: 'entradas', price: 22.00, available: true },
-                { id: 5, name: 'Causa Rellena', category: 'entradas', price: 20.00, available: true },
-                { id: 6, name: 'Lomo Saltado', category: 'principales', price: 35.00, available: true },
-                { id: 7, name: 'Ají de Gallina', category: 'principales', price: 30.00, available: true },
-                { id: 8, name: 'Arroz con Pollo', category: 'principales', price: 28.00, available: true },
-                { id: 9, name: 'Parrilla Mixta', category: 'principales', price: 45.00, available: true },
-                { id: 10, name: 'Tallarines Verdes', category: 'principales', price: 25.00, available: true },
-                { id: 11, name: 'Chicha Morada', category: 'bebidas', price: 8.00, available: true },
-                { id: 12, name: 'Inka Kola 500ml', category: 'bebidas', price: 6.00, available: true },
-                { id: 13, name: 'Agua Mineral', category: 'bebidas', price: 5.00, available: true },
-                { id: 14, name: 'Cerveza Cusqueña', category: 'bebidas', price: 12.00, available: true },
-                { id: 15, name: 'Maracuyá Natural', category: 'bebidas', price: 10.00, available: true },
-                { id: 16, name: 'Suspiro Limeño', category: 'postres', price: 14.00, available: true },
-                { id: 17, name: 'Picarones (4 und)', category: 'postres', price: 12.00, available: true },
-                { id: 18, name: 'Tarta de Chocolate', category: 'postres', price: 16.00, available: true },
-                { id: 19, name: 'Mazamorra Morada', category: 'postres', price: 10.00, available: true },
-                { id: 20, name: 'Helado Artesanal', category: 'postres', price: 11.00, available: true }
-            ];
-            saveMenu(defaults);
-        }
-
-        function getNextId() {
-            const menu = getMenu();
-            return menu.length > 0 ? Math.max(...menu.map(i => i.id)) + 1 : 1;
+        async function loadMenu() {
+            menuCache = await api.menu.getAll();
+            renderMenu();
         }
 
         function renderMenu() {
-            const menu = getMenu().filter(i => i.category === currentCategory);
+            const items = menuCache.filter(i => i.category === currentCategory);
             const container = document.getElementById('menuItems');
-            container.innerHTML = menu.length === 0
+            container.innerHTML = items.length === 0
                 ? '<p class="text-muted">No hay platos en esta categoría.</p>'
                 : `<div class="table-responsive">
                     <table class="table table-hover">
@@ -137,7 +103,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${menu.map(i => `
+                            ${items.map(i => `
                                 <tr class="${i.available ? '' : 'table-secondary text-muted'}">
                                     <td>${i.name}</td>
                                     <td>S/ ${i.price.toFixed(2)}</td>
@@ -162,7 +128,7 @@
             });
         });
 
-        document.getElementById('menuForm').addEventListener('submit', function (e) {
+        document.getElementById('menuForm').addEventListener('submit', async function (e) {
             e.preventDefault();
             const editId = document.getElementById('editId').value;
             const name = document.getElementById('itemName').value.trim();
@@ -170,21 +136,22 @@
             const price = parseFloat(document.getElementById('itemPrice').value);
             const available = document.getElementById('itemAvailable').checked;
 
-            let menu = getMenu();
-            if (editId) {
-                const idx = menu.findIndex(i => i.id === parseInt(editId));
-                if (idx !== -1) { menu[idx] = { ...menu[idx], name, category, price, available }; }
-                document.getElementById('formTitle').textContent = 'Nuevo Plato';
-                document.getElementById('saveBtn').textContent = 'Guardar Plato';
-                document.getElementById('cancelEditBtn').style.display = 'none';
-                document.getElementById('editId').value = '';
-            } else {
-                menu.push({ id: getNextId(), name, category, price, available });
+            try {
+                if (editId) {
+                    await api.menu.update(editId, { name, category, price, available });
+                    document.getElementById('formTitle').textContent = 'Nuevo Plato';
+                    document.getElementById('saveBtn').textContent = 'Guardar Plato';
+                    document.getElementById('cancelEditBtn').style.display = 'none';
+                    document.getElementById('editId').value = '';
+                } else {
+                    await api.menu.create({ name, category, price, available });
+                }
+                this.reset();
+                document.getElementById('itemAvailable').checked = true;
+                await loadMenu();
+            } catch (err) {
+                alert(err.message);
             }
-            saveMenu(menu);
-            this.reset();
-            document.getElementById('itemAvailable').checked = true;
-            renderMenu();
         });
 
         document.getElementById('cancelEditBtn').addEventListener('click', function () {
@@ -196,13 +163,11 @@
             document.getElementById('itemAvailable').checked = true;
         });
 
-        document.getElementById('menuItems').addEventListener('click', function (e) {
-            const menu = getMenu();
-
+        document.getElementById('menuItems').addEventListener('click', async function (e) {
             const editBtn = e.target.closest('.edit-item');
             if (editBtn) {
                 const id = parseInt(editBtn.dataset.id);
-                const item = menu.find(i => i.id === id);
+                const item = menuCache.find(i => i.id === id);
                 if (item) {
                     document.getElementById('editId').value = item.id;
                     document.getElementById('itemName').value = item.name;
@@ -220,14 +185,17 @@
             if (deleteBtn) {
                 const id = parseInt(deleteBtn.dataset.id);
                 if (confirm('¿Eliminar este plato del menú?')) {
-                    saveMenu(menu.filter(i => i.id !== id));
-                    renderMenu();
+                    try {
+                        await api.menu.delete(id);
+                        await loadMenu();
+                    } catch (err) {
+                        alert(err.message);
+                    }
                 }
             }
         });
 
-        seedDefaultMenu();
-        renderMenu();
+        loadMenu();
     </script>
 </body>
 </html>

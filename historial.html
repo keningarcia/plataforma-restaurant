@@ -52,94 +52,88 @@
         </div>
     </div>
 
+    <script src="api.js"></script>
     <script>
-        const STORAGE_KEYS = { history: 'restaurant_history', orders: 'restaurant_orders' };
+        if (!api.getToken()) { window.location.href = 'index.html'; }
 
-        function getHistory() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.history)) || []; } catch { return []; }
+        async function populateFilters() {
+            try {
+                const filters = await api.billing.getHistoryFilters();
+                const tableSelect = document.getElementById('filterTable');
+                tableSelect.innerHTML = '<option value="">Todas</option>' +
+                    filters.tables.map(t => `<option value="${t}">Mesa ${t}</option>`).join('');
+
+                const waiterSelect = document.getElementById('filterWaiter');
+                waiterSelect.innerHTML = '<option value="">Todos</option>' +
+                    filters.waiters.map(w => `<option value="${w}">${w}</option>`).join('');
+            } catch {}
         }
 
-        function getActiveOrders() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.orders)) || []; } catch { return []; }
-        }
-
-        function populateFilters() {
-            const history = getHistory();
-            const tables = [...new Set(history.map(o => o.table))].sort((a, b) => a - b);
-            const waiters = [...new Set(history.map(o => o.waiter).filter(Boolean))].sort();
-
-            const tableSelect = document.getElementById('filterTable');
-            tableSelect.innerHTML = '<option value="">Todas</option>' + tables.map(t => `<option value="${t}">Mesa ${t}</option>`).join('');
-
-            const waiterSelect = document.getElementById('filterWaiter');
-            waiterSelect.innerHTML = '<option value="">Todos</option>' + waiters.map(w => `<option value="${w}">${w}</option>`).join('');
-        }
-
-        function renderHistory() {
-            const history = getHistory();
-            const from = document.getElementById('filterFrom').value;
-            const to = document.getElementById('filterTo').value;
-            const tableFilter = document.getElementById('filterTable').value;
-            const waiterFilter = document.getElementById('filterWaiter').value;
-
-            let filtered = [...history];
-
-            if (from) filtered = filtered.filter(o => o.createdAt && o.createdAt.slice(0, 10) >= from);
-            if (to) filtered = filtered.filter(o => o.createdAt && o.createdAt.slice(0, 10) <= to);
-            if (tableFilter) filtered = filtered.filter(o => o.table === parseInt(tableFilter));
-            if (waiterFilter) filtered = filtered.filter(o => o.waiter === waiterFilter);
-
-            filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
+        async function renderHistory() {
             const container = document.getElementById('historyContainer');
+            container.innerHTML = '<p class="text-muted text-center">Cargando...</p>';
 
-            if (filtered.length === 0) {
-                container.innerHTML = '<p class="text-muted text-center">No se encontraron pedidos en el historial.</p>';
-                return;
-            }
+            try {
+                const params = {
+                    from: document.getElementById('filterFrom').value,
+                    to: document.getElementById('filterTo').value,
+                    table: document.getElementById('filterTable').value,
+                    waiter: document.getElementById('filterWaiter').value
+                };
+                Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
 
-            container.innerHTML = filtered.map(o => {
-                const total = o.items.reduce((s, i) => s + i.price * i.qty, 0);
-                const date = o.createdAt ? new Date(o.createdAt).toLocaleString('es-PE') : '—';
-                return `
-                    <div class="card shadow-sm mb-2">
-                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                            <div>
-                                <strong>Mesa ${o.table}</strong>
-                                <span class="badge bg-secondary ms-2">${date}</span>
+                const history = await api.billing.getHistory(params);
+
+                if (history.length === 0) {
+                    container.innerHTML = '<p class="text-muted text-center">No se encontraron pedidos en el historial.</p>';
+                    return;
+                }
+
+                container.innerHTML = history.map(o => {
+                    const total = o.items.reduce((s, i) => s + i.price * i.qty, 0);
+                    const date = o.created_at ? new Date(o.created_at).toLocaleString('es-PE') : '—';
+                    return `
+                        <div class="card shadow-sm mb-2">
+                            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>Mesa ${o.table_number}</strong>
+                                    <span class="badge bg-secondary ms-2">${date}</span>
+                                </div>
+                                <div>
+                                    <span class="text-muted small me-2">${o.waiter || '—'}</span>
+                                    <strong>S/ ${total.toFixed(2)}</strong>
+                                </div>
                             </div>
-                            <div>
-                                <span class="text-muted small me-2">${o.waiter || '—'}</span>
-                                <strong>S/ ${total.toFixed(2)}</strong>
-                            </div>
-                        </div>
-                        <div class="card-body py-2">
-                            <div class="table-responsive">
-                                <table class="table table-sm mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th>Producto</th>
-                                            <th class="text-center">Cant.</th>
-                                            <th class="text-end">Precio</th>
-                                            <th class="text-end">Subtotal</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${o.items.map(i => `
+                            <div class="card-body py-2">
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0">
+                                        <thead>
                                             <tr>
-                                                <td>${i.name}</td>
-                                                <td class="text-center">${i.qty}</td>
-                                                <td class="text-end">S/ ${i.price.toFixed(2)}</td>
-                                                <td class="text-end">S/ ${(i.price * i.qty).toFixed(2)}</td>
+                                                <th>Producto</th>
+                                                <th class="text-center">Cant.</th>
+                                                <th class="text-end">Precio</th>
+                                                <th class="text-end">Subtotal</th>
                                             </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            ${o.items.map(i => `
+                                                <tr>
+                                                    <td>${i.name}</td>
+                                                    <td class="text-center">${i.qty}</td>
+                                                    <td class="text-end">S/ ${i.price.toFixed(2)}</td>
+                                                    <td class="text-end">S/ ${(i.price * i.qty).toFixed(2)}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
+            } catch {
+                container.innerHTML = '<div class="alert alert-danger">Error al cargar el historial</div>';
+            }
         }
 
         document.getElementById('applyFilterBtn').addEventListener('click', renderHistory);

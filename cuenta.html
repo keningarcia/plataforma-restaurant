@@ -57,141 +57,129 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="api.js"></script>
     <script>
-        const STORAGE_KEYS = { orders: 'restaurant_orders', history: 'restaurant_history' };
+        if (!api.getToken()) { window.location.href = 'index.html'; }
+
         const IGV_RATE = 0.18;
 
-        function getOrders() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.orders)) || []; } catch { return []; }
-        }
-
-        function saveOrders(orders) {
-            localStorage.setItem(STORAGE_KEYS.orders, JSON.stringify(orders));
-        }
-
-        function getHistory() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.history)) || []; } catch { return []; }
-        }
-
-        function saveHistory(history) {
-            localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(history));
-        }
-
-        function populateTables() {
-            const orders = getOrders();
-            const tablesWithOrders = [...new Set(orders.filter(o => o.status === 'ready' || o.status === 'served').map(o => o.table))];
-            const select = document.getElementById('tableSelect');
-            select.innerHTML = '<option value="">Seleccionar mesa</option>' +
-                tablesWithOrders.map(t => `<option value="${t}">Mesa ${t}</option>`).join('');
-            if (tablesWithOrders.length === 0) {
-                select.innerHTML = '<option value="">No hay mesas pendientes de cobro</option>';
+        async function populateTables() {
+            try {
+                const tables = await api.billing.getTablesWithBills();
+                const select = document.getElementById('tableSelect');
+                select.innerHTML = tables.length === 0
+                    ? '<option value="">No hay mesas pendientes de cobro</option>'
+                    : '<option value="">Seleccionar mesa</option>' +
+                      tables.map(t => `<option value="${t}">Mesa ${t}</option>`).join('');
+            } catch {
+                document.getElementById('tableSelect').innerHTML = '<option value="">Error al cargar mesas</option>';
             }
         }
 
-        function renderBill(table) {
+        async function renderBill(table) {
             const container = document.getElementById('billContainer');
             if (!table) {
                 container.innerHTML = '<div class="text-center text-muted py-5"><h5>Seleccione una mesa con pedidos listos o servidos</h5></div>';
                 return;
             }
 
-            const orders = getOrders().filter(o => o.table === parseInt(table) && (o.status === 'ready' || o.status === 'served'));
-            if (orders.length === 0) {
-                container.innerHTML = '<div class="text-center text-muted py-5"><h5>No hay pedidos para esta mesa</h5></div>';
-                return;
-            }
+            try {
+                const orders = await api.billing.getTableOrders(table);
+                if (orders.length === 0) {
+                    container.innerHTML = '<div class="text-center text-muted py-5"><h5>No hay pedidos para esta mesa</h5></div>';
+                    return;
+                }
 
-            const allItems = [];
-            orders.forEach(o => o.items.forEach(i => {
-                const existing = allItems.find(x => x.id === i.id);
-                if (existing) existing.qty += i.qty;
-                else allItems.push({ ...i });
-            }));
+                const allItems = [];
+                orders.forEach(o => o.items.forEach(i => {
+                    const existing = allItems.find(x => x.id === i.id);
+                    if (existing) existing.qty += i.qty;
+                    else allItems.push({ ...i });
+                }));
 
-            const subtotal = allItems.reduce((s, i) => s + i.price * i.qty, 0);
-            const igv = subtotal * IGV_RATE;
-            const total = subtotal + igv;
+                const subtotal = allItems.reduce((s, i) => s + i.price * i.qty, 0);
+                const igv = subtotal * IGV_RATE;
+                const total = subtotal + igv;
 
-            container.innerHTML = `
-                <div class="card shadow-sm">
-                    <div class="card-header bg-white d-flex justify-content-between">
-                        <h5 class="mb-0">Cuenta - Mesa ${table}</h5>
-                        <small class="text-muted">${orders.length} pedido(s)</small>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-striped mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Producto</th>
-                                        <th class="text-center">Cant.</th>
-                                        <th class="text-end">P. Unit.</th>
-                                        <th class="text-end">Subtotal</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${allItems.map(i => `
+                container.innerHTML = `
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-white d-flex justify-content-between">
+                            <h5 class="mb-0">Cuenta - Mesa ${table}</h5>
+                            <small class="text-muted">${orders.length} pedido(s)</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-striped mb-0">
+                                    <thead class="table-light">
                                         <tr>
-                                            <td>${i.name}</td>
-                                            <td class="text-center">${i.qty}</td>
-                                            <td class="text-end">S/ ${i.price.toFixed(2)}</td>
-                                            <td class="text-end">S/ ${(i.price * i.qty).toFixed(2)}</td>
+                                            <th>Producto</th>
+                                            <th class="text-center">Cant.</th>
+                                            <th class="text-end">P. Unit.</th>
+                                            <th class="text-end">Subtotal</th>
                                         </tr>
-                                    `).join('')}
-                                </tbody>
-                                <tfoot class="table-light">
-                                    <tr>
-                                        <td colspan="3" class="text-end fw-bold">Subtotal</td>
-                                        <td class="text-end">S/ ${subtotal.toFixed(2)}</td>
-                                    </tr>
-                                    <tr>
-                                        <td colspan="3" class="text-end fw-bold">IGV (18%)</td>
-                                        <td class="text-end">S/ ${igv.toFixed(2)}</td>
-                                    </tr>
-                                    <tr class="fw-bold">
-                                        <td colspan="3" class="text-end">TOTAL</td>
-                                        <td class="text-end fs-5">S/ ${total.toFixed(2)}</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        ${allItems.map(i => `
+                                            <tr>
+                                                <td>${i.name}</td>
+                                                <td class="text-center">${i.qty}</td>
+                                                <td class="text-end">S/ ${i.price.toFixed(2)}</td>
+                                                <td class="text-end">S/ ${(i.price * i.qty).toFixed(2)}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                    <tfoot class="table-light">
+                                        <tr>
+                                            <td colspan="3" class="text-end fw-bold">Subtotal</td>
+                                            <td class="text-end">S/ ${subtotal.toFixed(2)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td colspan="3" class="text-end fw-bold">IGV (18%)</td>
+                                            <td class="text-end">S/ ${igv.toFixed(2)}</td>
+                                        </tr>
+                                        <tr class="fw-bold">
+                                            <td colspan="3" class="text-end">TOTAL</td>
+                                            <td class="text-end fs-5">S/ ${total.toFixed(2)}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white d-flex justify-content-between">
+                            <button class="btn btn-outline-danger btn-sm" id="splitBillBtn">Dividir Cuenta</button>
+                            <button class="btn btn-success" id="payBillBtn">Cobrar S/ ${total.toFixed(2)}</button>
                         </div>
                     </div>
-                    <div class="card-footer bg-white d-flex justify-content-between">
-                        <button class="btn btn-outline-danger btn-sm" id="splitBillBtn">Dividir Cuenta</button>
-                        <button class="btn btn-success" id="payBillBtn">Cobrar S/ ${total.toFixed(2)}</button>
-                    </div>
-                </div>
-            `;
+                `;
 
-            document.getElementById('payBillBtn').addEventListener('click', function () {
-                document.getElementById('paymentMessage').textContent =
-                    `Confirmar cobro de S/ ${total.toFixed(2)} para la Mesa ${table}.`;
-                const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
-                modal.show();
-                document.getElementById('confirmPaymentBtn').onclick = function () {
-                    const allOrders = getOrders();
-                    const servedOrders = allOrders.filter(o => o.table === parseInt(table) && (o.status === 'ready' || o.status === 'served'));
-                    const history = getHistory();
-                    servedOrders.forEach(o => {
-                        o.status = 'billed';
-                        o.billedAt = new Date().toISOString();
-                        history.push(o);
-                    });
-                    saveHistory(history);
-                    saveOrders(allOrders.filter(o => !(o.table === parseInt(table) && (o.status === 'ready' || o.status === 'served'))));
-                    modal.hide();
-                    populateTables();
-                    renderBill();
-                };
-            });
+                document.getElementById('payBillBtn').addEventListener('click', function () {
+                    document.getElementById('paymentMessage').textContent =
+                        `Confirmar cobro de S/ ${total.toFixed(2)} para la Mesa ${table}.`;
+                    const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
+                    modal.show();
+                    document.getElementById('confirmPaymentBtn').onclick = async function () {
+                        try {
+                            await api.billing.pay(parseInt(table));
+                            modal.hide();
+                            await populateTables();
+                            renderBill();
+                        } catch (err) {
+                            alert(err.message);
+                            modal.hide();
+                        }
+                    };
+                });
 
-            document.getElementById('splitBillBtn').addEventListener('click', function () {
-                const diners = prompt('¿Entre cuántas personas se divide la cuenta?', '2');
-                const n = parseInt(diners);
-                if (isNaN(n) || n < 2) return;
-                const perPerson = total / n;
-                alert(`Cuenta dividida en ${n} personas.\nCada uno paga: S/ ${perPerson.toFixed(2)}`);
-            });
+                document.getElementById('splitBillBtn').addEventListener('click', function () {
+                    const diners = prompt('¿Entre cuántas personas se divide la cuenta?', '2');
+                    const n = parseInt(diners);
+                    if (isNaN(n) || n < 2) return;
+                    const perPerson = total / n;
+                    alert(`Cuenta dividida en ${n} personas.\nCada uno paga: S/ ${perPerson.toFixed(2)}`);
+                });
+            } catch {
+                container.innerHTML = '<div class="alert alert-danger">Error al cargar la cuenta</div>';
+            }
         }
 
         document.getElementById('tableSelect').addEventListener('change', function () {

@@ -11,7 +11,7 @@
         <div class="container">
             <a class="navbar-brand" href="#">Plataforma Restaurant</a>
             <div class="d-flex align-items-center gap-2">
-                <span class="text-light small">Mesero: <strong>Carlos López</strong></span>
+                <span class="text-light small">Mesero: <strong id="waiterName">Carlos López</strong></span>
                 <a href="dashboard.html" class="btn btn-outline-light btn-sm">Volver</a>
             </div>
         </div>
@@ -89,67 +89,17 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="api.js"></script>
     <script>
-        const STORAGE_KEYS = { menu: 'restaurant_menu', tables: 'restaurant_tables', orders: 'restaurant_orders' };
+        if (!api.getToken()) { window.location.href = 'index.html'; }
 
-        function getData(key) {
-            try { return JSON.parse(localStorage.getItem(key)) || []; } catch { return []; }
-        }
-
-        function saveData(key, data) {
-            localStorage.setItem(key, JSON.stringify(data));
-        }
-
-        function seedDefaults() {
-            if (getData(STORAGE_KEYS.menu).length === 0) {
-                const defaults = [
-                    { id: 1, name: 'Ceviche Clásico', category: 'entradas', price: 28.00, available: true },
-                    { id: 2, name: 'Papas a la Huancaína', category: 'entradas', price: 18.00, available: true },
-                    { id: 3, name: 'Tequeños (6 und)', category: 'entradas', price: 15.00, available: true },
-                    { id: 4, name: 'Ensalada César', category: 'entradas', price: 22.00, available: true },
-                    { id: 5, name: 'Causa Rellena', category: 'entradas', price: 20.00, available: true },
-                    { id: 6, name: 'Lomo Saltado', category: 'principales', price: 35.00, available: true },
-                    { id: 7, name: 'Ají de Gallina', category: 'principales', price: 30.00, available: true },
-                    { id: 8, name: 'Arroz con Pollo', category: 'principales', price: 28.00, available: true },
-                    { id: 9, name: 'Parrilla Mixta', category: 'principales', price: 45.00, available: true },
-                    { id: 10, name: 'Tallarines Verdes', category: 'principales', price: 25.00, available: true },
-                    { id: 11, name: 'Chicha Morada', category: 'bebidas', price: 8.00, available: true },
-                    { id: 12, name: 'Inka Kola 500ml', category: 'bebidas', price: 6.00, available: true },
-                    { id: 13, name: 'Agua Mineral', category: 'bebidas', price: 5.00, available: true },
-                    { id: 14, name: 'Cerveza Cusqueña', category: 'bebidas', price: 12.00, available: true },
-                    { id: 15, name: 'Maracuyá Natural', category: 'bebidas', price: 10.00, available: true },
-                    { id: 16, name: 'Suspiro Limeño', category: 'postres', price: 14.00, available: true },
-                    { id: 17, name: 'Picarones (4 und)', category: 'postres', price: 12.00, available: true },
-                    { id: 18, name: 'Tarta de Chocolate', category: 'postres', price: 16.00, available: true },
-                    { id: 19, name: 'Mazamorra Morada', category: 'postres', price: 10.00, available: true },
-                    { id: 20, name: 'Helado Artesanal', category: 'postres', price: 11.00, available: true }
-                ];
-                saveData(STORAGE_KEYS.menu, defaults);
-            }
-            if (getData(STORAGE_KEYS.tables).length === 0) {
-                const defaults = [
-                    { id: 1, number: 1, capacity: 4 }, { id: 2, number: 2, capacity: 4 },
-                    { id: 3, number: 3, capacity: 2 }, { id: 4, number: 4, capacity: 6 },
-                    { id: 5, number: 5, capacity: 4 }, { id: 6, number: 6, capacity: 2 },
-                    { id: 7, number: 7, capacity: 8 }, { id: 8, number: 8, capacity: 4 }
-                ];
-                saveData(STORAGE_KEYS.tables, defaults);
-            }
-        }
-
-        function getNextOrderId() {
-            const orders = getData(STORAGE_KEYS.orders);
-            return orders.length > 0 ? Math.max(...orders.map(o => o.id)) + 1 : 1;
-        }
-
-        function loadTables() {
-            const tables = getData(STORAGE_KEYS.tables);
-            const select = document.getElementById('tableSelect');
-            select.innerHTML = tables.map(t => `<option value="${t.number}">Mesa ${t.number}</option>`).join('');
-        }
+        const user = api.getUser();
+        if (user) document.getElementById('waiterName').textContent = user.name;
 
         let currentOrder = [];
         let currentCategory = 'entradas';
+        let menuItems = [];
+        let tablesCache = [];
 
         const menuItemsEl = document.getElementById('menuItems');
         const orderItemsEl = document.getElementById('orderItems');
@@ -157,9 +107,24 @@
         const sendOrderBtn = document.getElementById('sendOrderBtn');
         const clearOrderBtn = document.getElementById('clearOrderBtn');
 
+        async function loadData() {
+            const [menu, tables] = await Promise.all([
+                api.menu.getAll(),
+                api.tables.getAll()
+            ]);
+            menuItems = menu.filter(i => i.available);
+            tablesCache = tables;
+            loadTables();
+            renderMenu(currentCategory);
+        }
+
+        function loadTables() {
+            const select = document.getElementById('tableSelect');
+            select.innerHTML = tablesCache.map(t => `<option value="${t.number}">Mesa ${t.number}</option>`).join('');
+        }
+
         function renderMenu(category) {
-            const allMenu = getData(STORAGE_KEYS.menu).filter(i => i.available !== false);
-            const items = allMenu.filter(i => i.category === category);
+            const items = menuItems.filter(i => i.category === category);
             menuItemsEl.innerHTML = items.length === 0
                 ? '<p class="text-muted">No hay platos disponibles en esta categoría.</p>'
                 : items.map(item => `
@@ -257,37 +222,32 @@
             }
         });
 
-        sendOrderBtn.addEventListener('click', function () {
-            const table = parseInt(document.getElementById('tableSelect').value);
+        sendOrderBtn.addEventListener('click', async function () {
+            const table_number = parseInt(document.getElementById('tableSelect').value);
             const summary = getOrderSummary();
             const total = summary.reduce((sum, item) => sum + item.price * item.qty, 0);
-            const details = summary.map(item => `${item.name} x${item.qty}`).join(', ');
 
-            const order = {
-                id: getNextOrderId(),
-                table,
-                waiter: 'Carlos López',
-                items: summary,
-                total,
-                status: 'pending',
-                createdAt: new Date().toISOString()
-            };
+            try {
+                const order = await api.orders.create({
+                    table_number,
+                    waiter: user ? user.name : 'Carlos López',
+                    items: summary,
+                    total
+                });
 
-            const orders = getData(STORAGE_KEYS.orders);
-            orders.push(order);
-            saveData(STORAGE_KEYS.orders, orders);
-
-            document.getElementById('confirmMessage').textContent =
-                `Pedido #${order.id} enviado a cocina para la Mesa ${table}. Items: ${details}. Total: S/ ${total.toFixed(2)}.`;
-            const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
-            modal.show();
-            currentOrder = [];
-            renderOrder();
+                const details = summary.map(item => `${item.name} x${item.qty}`).join(', ');
+                document.getElementById('confirmMessage').textContent =
+                    `Pedido #${order.id} enviado a cocina para la Mesa ${table_number}. Items: ${details}. Total: S/ ${total.toFixed(2)}.`;
+                const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+                modal.show();
+                currentOrder = [];
+                renderOrder();
+            } catch (err) {
+                alert(err.message);
+            }
         });
 
-        seedDefaults();
-        loadTables();
-        renderMenu(currentCategory);
+        loadData();
     </script>
 </body>
 </html>

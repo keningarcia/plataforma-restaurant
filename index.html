@@ -34,27 +34,30 @@
         </div>
     </div>
 
+    <script src="api.js"></script>
     <script>
-        const VALID_EMAIL = 'admin@restaurant.com';
-        const VALID_PASS = '123456';
-
-        document.getElementById('loginForm').addEventListener('submit', function (e) {
+        document.getElementById('loginForm').addEventListener('submit', async function (e) {
             e.preventDefault();
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value.trim();
             const alertContainer = document.getElementById('alertContainer');
+            const btn = this.querySelector('button[type="submit"]');
 
             alertContainer.innerHTML = '';
+            btn.disabled = true;
+            btn.textContent = 'Ingresando...';
 
-            if (email === VALID_EMAIL && password === VALID_PASS) {
-                alertContainer.innerHTML =
-                    '<div class="alert alert-success">Inicio de sesión exitoso. Redirigiendo...</div>';
-                setTimeout(() => {
-                    window.location.href = 'dashboard.html';
-                }, 1000);
-            } else {
-                alertContainer.innerHTML =
-                    '<div class="alert alert-danger">Credenciales incorrectas. Intenta de nuevo.</div>';
+            try {
+                const data = await api.auth.login(email, password);
+                api.setToken(data.token);
+                api.setUser(data.user);
+                alertContainer.innerHTML = '<div class="alert alert-success">Inicio de sesión exitoso. Redirigiendo...</div>';
+                setTimeout(() => { window.location.href = 'dashboard.html'; }, 1000);
+            } catch (err) {
+                alertContainer.innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Ingresar';
             }
         });
     </script>

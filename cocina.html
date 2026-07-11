@@ -24,24 +24,9 @@
         </div>
     </div>
 
+    <script src="api.js"></script>
     <script>
-        const STORAGE_KEYS = { orders: 'restaurant_orders', history: 'restaurant_history' };
-
-        function getOrders() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.orders)) || []; } catch { return []; }
-        }
-
-        function saveOrders(orders) {
-            localStorage.setItem(STORAGE_KEYS.orders, JSON.stringify(orders));
-        }
-
-        function getHistory() {
-            try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.history)) || []; } catch { return []; }
-        }
-
-        function saveHistory(history) {
-            localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(history));
-        }
+        if (!api.getToken()) { window.location.href = 'index.html'; }
 
         function getTimeElapsed(createdAt) {
             const diff = Date.now() - new Date(createdAt).getTime();
@@ -52,93 +37,79 @@
             return `${hrs}h ${mins % 60}min`;
         }
 
-        function renderOrders() {
-            const orders = getOrders();
-            const container = document.getElementById('ordersContainer');
-            const columns = {
-                pending: { title: 'Pendientes', color: 'danger', icon: '&#x23F3;' },
-                preparing: { title: 'En Preparación', color: 'warning', icon: '&#x1F525;' },
-                ready: { title: 'Listos para Servir', color: 'success', icon: '&#x2705;' }
-            };
+        async function renderOrders() {
+            try {
+                const orders = await api.orders.getAll();
+                const container = document.getElementById('ordersContainer');
+                const columns = {
+                    pending: { title: 'Pendientes', color: 'danger', icon: '&#x23F3;' },
+                    preparing: { title: 'En Preparación', color: 'warning', icon: '&#x1F525;' },
+                    ready: { title: 'Listos para Servir', color: 'success', icon: '&#x2705;' }
+                };
 
-            let html = '';
-            for (const [status, col] of Object.entries(columns)) {
-                const items = orders.filter(o => o.status === status);
-                html += `
-                    <div class="col-md-4">
-                        <div class="card shadow-sm">
-                            <div class="card-header bg-${col.color} text-${status === 'preparing' ? 'dark' : 'white'}">
-                                <h5 class="mb-0">${col.icon} ${col.title} <span class="badge bg-light text-dark">${items.length}</span></h5>
-                            </div>
-                            <div class="card-body p-2" style="max-height: 70vh; overflow-y: auto;">
-                                ${items.length === 0 ? '<p class="text-muted text-center small my-3">Sin pedidos</p>' :
-                                    items.map(o => `
-                                        <div class="card mb-2">
-                                            <div class="card-body p-3">
-                                                <div class="d-flex justify-content-between align-items-start mb-2">
-                                                    <h6 class="mb-0">Mesa ${o.table}</h6>
-                                                    <small class="text-muted">${getTimeElapsed(o.createdAt)}</small>
+                let html = '';
+                for (const [status, col] of Object.entries(columns)) {
+                    const items = orders.filter(o => o.status === status);
+                    html += `
+                        <div class="col-md-4">
+                            <div class="card shadow-sm">
+                                <div class="card-header bg-${col.color} text-${status === 'preparing' ? 'dark' : 'white'}">
+                                    <h5 class="mb-0">${col.icon} ${col.title} <span class="badge bg-light text-dark">${items.length}</span></h5>
+                                </div>
+                                <div class="card-body p-2" style="max-height: 70vh; overflow-y: auto;">
+                                    ${items.length === 0 ? '<p class="text-muted text-center small my-3">Sin pedidos</p>' :
+                                        items.map(o => `
+                                            <div class="card mb-2">
+                                                <div class="card-body p-3">
+                                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                                        <h6 class="mb-0">Mesa ${o.table_number}</h6>
+                                                        <small class="text-muted">${getTimeElapsed(o.created_at)}</small>
+                                                    </div>
+                                                    <small class="text-muted d-block mb-1">Mesero: ${o.waiter}</small>
+                                                    <ul class="list-unstyled small mb-2">
+                                                        ${o.items.map(i => `<li>${i.name} x${i.qty}</li>`).join('')}
+                                                    </ul>
+                                                    ${status === 'pending' ? `
+                                                        <button class="btn btn-sm btn-warning w-100 accept-order" data-id="${o.id}">Aceptar Pedido</button>
+                                                    ` : ''}
+                                                    ${status === 'preparing' ? `
+                                                        <button class="btn btn-sm btn-success w-100 ready-order" data-id="${o.id}">Marcar Listo</button>
+                                                    ` : ''}
+                                                    ${status === 'ready' ? `
+                                                        <button class="btn btn-sm btn-outline-secondary w-100 serve-order" data-id="${o.id}">Servir</button>
+                                                    ` : ''}
                                                 </div>
-                                                <small class="text-muted d-block mb-1">Mesero: ${o.waiter}</small>
-                                                <ul class="list-unstyled small mb-2">
-                                                    ${o.items.map(i => `<li>${i.name} x${i.qty}</li>`).join('')}
-                                                </ul>
-                                                ${status === 'pending' ? `
-                                                    <button class="btn btn-sm btn-warning w-100 accept-order" data-id="${o.id}">Aceptar Pedido</button>
-                                                ` : ''}
-                                                ${status === 'preparing' ? `
-                                                    <button class="btn btn-sm btn-success w-100 ready-order" data-id="${o.id}">Marcar Listo</button>
-                                                ` : ''}
-                                                ${status === 'ready' ? `
-                                                    <button class="btn btn-sm btn-outline-secondary w-100 serve-order" data-id="${o.id}">Servir</button>
-                                                ` : ''}
                                             </div>
-                                        </div>
-                                    `).join('')}
+                                        `).join('')}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
+                container.innerHTML = html;
+            } catch {
+                document.getElementById('ordersContainer').innerHTML =
+                    '<div class="col-12"><div class="alert alert-danger">Error al cargar pedidos. ¿El servidor está corriendo?</div></div>';
             }
-            container.innerHTML = html;
         }
 
-        document.addEventListener('click', function (e) {
-            const orders = getOrders();
+        document.addEventListener('click', async function (e) {
+            const id = e.target.dataset.id;
+            if (!id) return;
 
-            const acceptBtn = e.target.closest('.accept-order');
-            if (acceptBtn) {
-                const id = parseInt(acceptBtn.dataset.id);
-                const order = orders.find(o => o.id === id);
-                if (order) order.status = 'preparing';
-                saveOrders(orders);
-                renderOrders();
-                return;
-            }
-
-            const readyBtn = e.target.closest('.ready-order');
-            if (readyBtn) {
-                const id = parseInt(readyBtn.dataset.id);
-                const order = orders.find(o => o.id === id);
-                if (order) order.status = 'ready';
-                saveOrders(orders);
-                renderOrders();
-                return;
-            }
-
-            const serveBtn = e.target.closest('.serve-order');
-            if (serveBtn) {
-                const id = parseInt(serveBtn.dataset.id);
-                const idx = orders.findIndex(o => o.id === id);
-                if (idx !== -1) {
-                    const served = { ...orders[idx], status: 'served' };
-                    const history = getHistory();
-                    history.push(served);
-                    saveHistory(history);
-                    orders.splice(idx, 1);
-                    saveOrders(orders);
-                    renderOrders();
+            try {
+                if (e.target.closest('.accept-order')) {
+                    await api.orders.updateStatus(id, 'preparing');
+                } else if (e.target.closest('.ready-order')) {
+                    await api.orders.updateStatus(id, 'ready');
+                } else if (e.target.closest('.serve-order')) {
+                    await api.orders.updateStatus(id, 'served');
+                } else {
+                    return;
                 }
+                await renderOrders();
+            } catch (err) {
+                alert(err.message);
             }
         });
 

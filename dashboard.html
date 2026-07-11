@@ -77,68 +77,56 @@
         </div>
     </div>
 
+    <script src="api.js"></script>
     <script>
-        const STORAGE_KEYS = {
-            orders: 'restaurant_orders',
-            menu: 'restaurant_menu',
-            tables: 'restaurant_tables',
-            history: 'restaurant_history'
-        };
+        const user = api.getUser();
+        if (!api.getToken() || !user) { window.location.href = 'index.html'; }
+        document.getElementById('waiterName').textContent = user ? user.name : 'Admin';
 
-        function getData(key) {
-            try { return JSON.parse(localStorage.getItem(key)) || []; } catch { return []; }
-        }
-
-        function getOrders() { return getData(STORAGE_KEYS.orders); }
-        function getHistory() { return getData(STORAGE_KEYS.history); }
-
-        function updateStats() {
-            const orders = getOrders();
-            const history = getHistory();
-            const all = [...orders, ...history];
-            const today = all.filter(o => o.createdAt && o.createdAt.startsWith(new Date().toISOString().slice(0, 10)));
-            const pending = orders.filter(o => o.status === 'pending').length;
-            const preparing = orders.filter(o => o.status === 'preparing').length;
-            const ready = orders.filter(o => o.status === 'ready').length;
-            const activeTables = new Set(orders.map(o => o.table)).size;
-
-            document.getElementById('statsRow').innerHTML = `
-                <div class="col-md-3">
-                    <div class="card bg-primary text-white shadow-sm">
-                        <div class="card-body">
-                            <h6 class="card-title mb-0">Pedidos Pendientes</h6>
-                            <h2 class="mb-0">${pending}</h2>
+        async function updateStats() {
+            try {
+                const stats = await api.orders.getStats();
+                document.getElementById('statsRow').innerHTML = `
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white shadow-sm">
+                            <div class="card-body">
+                                <h6 class="card-title mb-0">Pedidos Pendientes</h6>
+                                <h2 class="mb-0">${stats.pending}</h2>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card bg-warning text-dark shadow-sm">
-                        <div class="card-body">
-                            <h6 class="card-title mb-0">En Preparación</h6>
-                            <h2 class="mb-0">${preparing}</h2>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-dark shadow-sm">
+                            <div class="card-body">
+                                <h6 class="card-title mb-0">En Preparación</h6>
+                                <h2 class="mb-0">${stats.preparing}</h2>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card bg-success text-white shadow-sm">
-                        <div class="card-body">
-                            <h6 class="card-title mb-0">Listos para Servir</h6>
-                            <h2 class="mb-0">${ready}</h2>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white shadow-sm">
+                            <div class="card-body">
+                                <h6 class="card-title mb-0">Listos para Servir</h6>
+                                <h2 class="mb-0">${stats.ready}</h2>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="card bg-info text-white shadow-sm">
-                        <div class="card-body">
-                            <h6 class="card-title mb-0">Mesas Ocupadas</h6>
-                            <h2 class="mb-0">${activeTables}</h2>
+                    <div class="col-md-3">
+                        <div class="card bg-info text-white shadow-sm">
+                            <div class="card-body">
+                                <h6 class="card-title mb-0">Mesas Ocupadas</h6>
+                                <h2 class="mb-0">${stats.activeTables}</h2>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            } catch {
+                document.getElementById('statsRow').innerHTML = '<div class="col-12"><div class="alert alert-danger">Error al cargar estadísticas</div></div>';
+            }
         }
 
         updateStats();
+        setInterval(updateStats, 10000);
     </script>
 </body>
 </html>

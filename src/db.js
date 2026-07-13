@@ -63,9 +63,14 @@ function initSchema() {
       total REAL NOT NULL,
       status TEXT NOT NULL,
       created_at TEXT,
-      billed_at TEXT
+      billed_at TEXT,
+      payment_method TEXT DEFAULT 'efectivo'
     );
   `);
+
+  try {
+    db.exec("ALTER TABLE history ADD COLUMN payment_method TEXT DEFAULT 'efectivo'");
+  } catch (e) {}
 }
 
 module.exports = { getDb };

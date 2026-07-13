@@ -23,7 +23,7 @@
                                 <input type="password" class="form-control" id="password" placeholder="********" required>
                             </div>
                             <div id="alertContainer"></div>
-                            <button type="submit" class="btn btn-primary w-100">Ingresar</button>
+                            <button type="submit" class="btn btn-primary w-100" id="loginBtn">Ingresar</button>
                         </form>
                         <p class="text-center text-muted small mt-3 mb-0">
                             Demo: admin@restaurant.com / 123456
@@ -36,16 +36,17 @@
 
     <script src="api.js"></script>
     <script>
+        if (api.getToken()) { window.location.href = 'dashboard.html'; }
         document.getElementById('loginForm').addEventListener('submit', async function (e) {
             e.preventDefault();
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value.trim();
             const alertContainer = document.getElementById('alertContainer');
-            const btn = this.querySelector('button[type="submit"]');
+            const btn = document.getElementById('loginBtn');
 
             alertContainer.innerHTML = '';
             btn.disabled = true;
-            btn.textContent = 'Ingresando...';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Ingresando...';
 
             try {
                 const data = await api.auth.login(email, password);

@@ -11,7 +11,9 @@
         <div class="container">
             <a class="navbar-brand" href="#">Gestión de Menú</a>
             <div class="d-flex align-items-center gap-2">
+                <span class="text-light small"><strong id="waiterName"></strong></span>
                 <a href="dashboard.html" class="btn btn-outline-light btn-sm">Volver</a>
+                <button onclick="api.logout()" class="btn btn-outline-danger btn-sm">Cerrar Sesión</button>
             </div>
         </div>
     </nav>
@@ -70,14 +72,16 @@
                         <button class="nav-link" data-category="postres">Postres</button>
                     </li>
                 </ul>
-                <div id="menuItems" class="mt-3"></div>
+                <div id="menuItems" class="mt-3"><div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="text-muted mt-2">Cargando menú...</p></div></div>
             </div>
         </div>
     </div>
 
     <script src="api.js"></script>
     <script>
-        if (!api.getToken()) { window.location.href = 'index.html'; }
+        if (!api.checkAuth()) return;
+        const user = api.getUser();
+        if (user) document.getElementById('waiterName').textContent = user.name;
 
         let currentCategory = 'entradas';
         let menuCache = [];
@@ -195,7 +199,9 @@
             }
         });
 
-        loadMenu();
+        loadMenu().catch(() => {
+            document.getElementById('menuItems').innerHTML = '<div class="alert alert-danger">Error al cargar el menú</div>';
+        });
     </script>
 </body>
 </html>

@@ -27,6 +27,15 @@ const api = {
     window.location.href = 'index.html';
   },
 
+  checkAuth() {
+    const token = this.getToken();
+    if (!token) {
+      window.location.href = 'index.html';
+      return false;
+    }
+    return true;
+  },
+
   async request(method, url, body = null) {
     const headers = { 'Content-Type': 'application/json' };
     const token = this.getToken();
@@ -43,6 +52,10 @@ const api = {
       const res = await fetch(`${API_BASE}${url}`, options);
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 401) {
+          this.logout();
+          throw new Error('Sesión expirada. Redirigiendo al login...');
+        }
         throw new Error(data.error || 'Error en la solicitud');
       }
       return data;
@@ -86,19 +99,33 @@ const api = {
 
   orders: {
     getAll() { return api.get('/api/orders'); },
+    get(id) { return api.get(`/api/orders/${id}`); },
     create(order) { return api.post('/api/orders', order); },
+    update(id, order) { return api.put(`/api/orders/${id}`, order); },
     updateStatus(id, status) { return api.patch(`/api/orders/${id}/status`, { status }); },
+    cancel(id) { return api.patch(`/api/orders/${id}/cancel`); },
     getStats() { return api.get('/api/orders/stats'); }
   },
 
   billing: {
     getTablesWithBills() { return api.get('/api/billing/tables'); },
     getTableOrders(table) { return api.get(`/api/billing/table/${table}`); },
-    pay(table_number) { return api.post('/api/billing/pay', { table_number }); },
+    pay(table_number, payment_method) { return api.post('/api/billing/pay', { table_number, payment_method }); },
     getHistory(params) {
       const qs = new URLSearchParams(params).toString();
       return api.get(`/api/billing/history?${qs}`);
     },
     getHistoryFilters() { return api.get('/api/billing/history/filters'); }
+  },
+
+  users: {
+    getAll() { return api.get('/api/users'); },
+    get(id) { return api.get(`/api/users/${id}`); },
+    create(user) { return api.post('/api/users', user); },
+    update(id, user) { return api.put(`/api/users/${id}`, user); },
+    delete(id) { return api.del(`/api/users/${id}`); },
+    changePassword(id, current_password, new_password) {
+      return api.patch(`/api/users/${id}/password`, { current_password, new_password });
+    }
   }
 };

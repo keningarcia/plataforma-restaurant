@@ -11,7 +11,9 @@
         <div class="container">
             <a class="navbar-brand" href="#">Historial de Pedidos</a>
             <div class="d-flex align-items-center gap-2">
+                <span class="text-light small"><strong id="waiterName"></strong></span>
                 <a href="dashboard.html" class="btn btn-outline-light btn-sm">Volver</a>
+                <button onclick="api.logout()" class="btn btn-outline-danger btn-sm">Cerrar Sesión</button>
             </div>
         </div>
     </nav>
@@ -20,11 +22,11 @@
         <div class="card shadow-sm mb-4">
             <div class="card-body">
                 <div class="row g-2 align-items-end">
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small">Fecha inicio</label>
                         <input type="date" id="filterFrom" class="form-control form-control-sm">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label small">Fecha fin</label>
                         <input type="date" id="filterTo" class="form-control form-control-sm">
                     </div>
@@ -40,6 +42,15 @@
                             <option value="">Todos</option>
                         </select>
                     </div>
+                    <div class="col-md-2">
+                        <label class="form-label small">Pago</label>
+                        <select id="filterPayment" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            <option value="efectivo">Efectivo</option>
+                            <option value="tarjeta">Tarjeta</option>
+                            <option value="yape">Yape/Plin</option>
+                        </select>
+                    </div>
                     <div class="col-md-2 d-grid">
                         <button id="applyFilterBtn" class="btn btn-primary btn-sm">Filtrar</button>
                     </div>
@@ -48,13 +59,29 @@
         </div>
 
         <div id="historyContainer">
-            <p class="text-muted text-center">Cargando historial...</p>
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="text-muted mt-2">Cargando historial...</p>
+            </div>
         </div>
+
+        <nav id="paginationNav" aria-label="Paginación" class="d-none">
+            <ul class="pagination justify-content-center">
+                <li class="page-item" id="prevPage"><a class="page-link" href="#">Anterior</a></li>
+                <li class="page-item disabled"><a class="page-link" href="#" id="pageInfo">Página 1</a></li>
+                <li class="page-item" id="nextPage"><a class="page-link" href="#">Siguiente</a></li>
+            </ul>
+        </nav>
     </div>
 
     <script src="api.js"></script>
     <script>
-        if (!api.getToken()) { window.location.href = 'index.html'; }
+        if (!api.checkAuth()) return;
+        const user = api.getUser();
+        if (user) document.getElementById('waiterName').textContent = user.name;
+
+        let currentPage = 1;
+        let totalPages = 1;
 
         async function populateFilters() {
             try {
@@ -71,33 +98,48 @@
 
         async function renderHistory() {
             const container = document.getElementById('historyContainer');
-            container.innerHTML = '<p class="text-muted text-center">Cargando...</p>';
+            container.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="text-muted mt-2">Cargando...</p></div>';
 
             try {
                 const params = {
                     from: document.getElementById('filterFrom').value,
                     to: document.getElementById('filterTo').value,
                     table: document.getElementById('filterTable').value,
-                    waiter: document.getElementById('filterWaiter').value
+                    waiter: document.getElementById('filterWaiter').value,
+                    payment_method: document.getElementById('filterPayment').value,
+                    page: currentPage,
+                    limit: 20
                 };
                 Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
 
-                const history = await api.billing.getHistory(params);
+                const result = await api.billing.getHistory(params);
+                const history = result.data;
+                const pagination = result.pagination;
 
                 if (history.length === 0) {
                     container.innerHTML = '<p class="text-muted text-center">No se encontraron pedidos en el historial.</p>';
+                    document.getElementById('paginationNav').classList.add('d-none');
                     return;
                 }
+
+                totalPages = pagination.totalPages;
+                document.getElementById('pageInfo').textContent = `Página ${pagination.page} de ${totalPages} (${pagination.total} registros)`;
+                document.getElementById('prevPage').classList.toggle('disabled', currentPage <= 1);
+                document.getElementById('nextPage').classList.toggle('disabled', currentPage >= totalPages);
+                document.getElementById('paginationNav').classList.remove('d-none');
 
                 container.innerHTML = history.map(o => {
                     const total = o.items.reduce((s, i) => s + i.price * i.qty, 0);
                     const date = o.created_at ? new Date(o.created_at).toLocaleString('es-PE') : '—';
+                    const methodLabels = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', yape: 'Yape/Plin' };
+                    const methodLabel = methodLabels[o.payment_method] || o.payment_method || '—';
                     return `
                         <div class="card shadow-sm mb-2">
                             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                                 <div>
                                     <strong>Mesa ${o.table_number}</strong>
                                     <span class="badge bg-secondary ms-2">${date}</span>
+                                    <span class="badge bg-info ms-1">${methodLabel}</span>
                                 </div>
                                 <div>
                                     <span class="text-muted small me-2">${o.waiter || '—'}</span>
@@ -136,7 +178,20 @@
             }
         }
 
-        document.getElementById('applyFilterBtn').addEventListener('click', renderHistory);
+        document.getElementById('applyFilterBtn').addEventListener('click', function () {
+            currentPage = 1;
+            renderHistory();
+        });
+
+        document.getElementById('prevPage').addEventListener('click', function (e) {
+            e.preventDefault();
+            if (currentPage > 1) { currentPage--; renderHistory(); }
+        });
+
+        document.getElementById('nextPage').addEventListener('click', function (e) {
+            e.preventDefault();
+            if (currentPage < totalPages) { currentPage++; renderHistory(); }
+        });
 
         populateFilters();
         renderHistory();

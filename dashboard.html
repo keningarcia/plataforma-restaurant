@@ -12,13 +12,13 @@
             <a class="navbar-brand" href="#">Plataforma Restaurant</a>
             <div class="d-flex align-items-center gap-2">
                 <span class="text-light small">Bienvenido, <strong id="waiterName">Admin</strong></span>
-                <a href="index.html" class="btn btn-outline-light btn-sm">Cerrar Sesión</a>
+                <button onclick="api.logout()" class="btn btn-outline-light btn-sm">Cerrar Sesión</button>
             </div>
         </div>
     </nav>
 
     <div class="container py-4">
-        <div class="row g-3 mb-4" id="statsRow"></div>
+        <div class="row g-3 mb-4" id="statsRow"><div class="col-12 text-center py-4"><div class="spinner-border text-primary" role="status"></div></div></div>
         <div class="row g-3">
             <div class="col-md-4 col-lg-3">
                 <a href="pedidos.html" class="card text-decoration-none h-100 shadow-sm">
@@ -66,6 +66,15 @@
                 </a>
             </div>
             <div class="col-md-4 col-lg-3">
+                <a href="usuarios.html" class="card text-decoration-none h-100 shadow-sm">
+                    <div class="card-body text-center py-4">
+                        <h1 class="mb-2">&#x1F465;</h1>
+                        <h5 class="card-title">Usuarios</h5>
+                        <p class="card-text text-muted small">Gestionar usuarios</p>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-4 col-lg-3">
                 <a href="historial.html" class="card text-decoration-none h-100 shadow-sm">
                     <div class="card-body text-center py-4">
                         <h1 class="mb-2">&#x1F4C4;</h1>
@@ -79,8 +88,9 @@
 
     <script src="api.js"></script>
     <script>
+        if (!api.checkAuth()) return;
+
         const user = api.getUser();
-        if (!api.getToken() || !user) { window.location.href = 'index.html'; }
         document.getElementById('waiterName').textContent = user ? user.name : 'Admin';
 
         async function updateStats() {

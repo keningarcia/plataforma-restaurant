@@ -1,17 +1,22 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
 const { getDb } = require('../db');
-const { generateToken, JWT_SECRET } = require('../middleware/auth');
+const { generateToken } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.post('/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email y contraseña requeridos' });
+router.post('/login', [
+  body('email').isEmail().withMessage('Email inválido'),
+  body('password').notEmpty().withMessage('Contraseña requerida')
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
   }
 
+  const { email, password } = req.body;
   const db = getDb();
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!user) {
@@ -27,21 +32,11 @@ router.post('/login', (req, res) => {
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
-router.get('/me', (req, res) => {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No autenticado' });
-  }
-  try {
-    const token = header.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const db = getDb();
-    const user = db.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(decoded.id);
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(user);
-  } catch {
-    return res.status(401).json({ error: 'Token inválido' });
-  }
+router.get('/me', authenticate, (req, res) => {
+  const db = getDb();
+  const user = db.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(req.user.id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+  res.json(user);
 });
 
 module.exports = router;

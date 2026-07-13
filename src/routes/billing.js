@@ -1,4 +1,5 @@
 const express = require('express');
+const { body, validationResult } = require('express-validator');
 const { getDb } = require('../db');
 const { authenticate } = require('../middleware/auth');
 
@@ -21,9 +22,16 @@ router.get('/table/:number', (req, res) => {
   res.json(parsed);
 });
 
-router.post('/pay', authenticate, (req, res) => {
-  const { table_number } = req.body;
-  if (!table_number) return res.status(400).json({ error: 'Número de mesa requerido' });
+router.post('/pay', authenticate, [
+  body('table_number').isInt({ min: 1 }).withMessage('Número de mesa requerido'),
+  body('payment_method').optional().isIn(['efectivo', 'tarjeta', 'yape'])
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: errors.array()[0].msg });
+  }
+
+  const { table_number, payment_method } = req.body;
 
   const db = getDb();
   const orders = db.prepare(
@@ -35,38 +43,58 @@ router.post('/pay', authenticate, (req, res) => {
   }
 
   const now = new Date().toISOString();
+  const method = payment_method || 'efectivo';
   const insertHistory = db.prepare(
-    'INSERT INTO history (original_id, table_number, waiter, items, total, status, created_at, billed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO history (original_id, table_number, waiter, items, total, status, created_at, billed_at, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   const deleteOrder = db.prepare('DELETE FROM orders WHERE id = ?');
 
   const transaction = db.transaction(() => {
     for (const order of orders) {
-      insertHistory.run(order.id, order.table_number, order.waiter, order.items, order.total, 'billed', order.created_at, now);
+      insertHistory.run(order.id, order.table_number, order.waiter, order.items, order.total, 'billed', order.created_at, now, method);
       deleteOrder.run(order.id);
     }
   });
 
   transaction();
-  res.json({ message: `Mesa ${table_number} cobrada exitosamente`, billed: orders.length });
+  res.json({ message: `Mesa ${table_number} cobrada exitosamente`, billed: orders.length, payment_method: method });
 });
 
 router.get('/history', (req, res) => {
   const db = getDb();
-  const { from, to, table, waiter } = req.query;
+  const { from, to, table, waiter, payment_method, page, limit } = req.query;
+
+  let countSql = 'SELECT COUNT(*) as total FROM history WHERE 1=1';
   let sql = 'SELECT * FROM history WHERE 1=1';
   const params = [];
 
-  if (from) { sql += ' AND date(created_at) >= date(?)'; params.push(from); }
-  if (to) { sql += ' AND date(created_at) <= date(?)'; params.push(to); }
-  if (table) { sql += ' AND table_number = ?'; params.push(parseInt(table)); }
-  if (waiter) { sql += ' AND waiter = ?'; params.push(waiter); }
+  if (from) { sql += ' AND date(created_at) >= date(?)'; countSql += ' AND date(created_at) >= date(?)'; params.push(from); }
+  if (to) { sql += ' AND date(created_at) <= date(?)'; countSql += ' AND date(created_at) <= date(?)'; params.push(to); }
+  if (table) { sql += ' AND table_number = ?'; countSql += ' AND table_number = ?'; params.push(parseInt(table)); }
+  if (waiter) { sql += ' AND waiter = ?'; countSql += ' AND waiter = ?'; params.push(waiter); }
+  if (payment_method) { sql += ' AND payment_method = ?'; countSql += ' AND payment_method = ?'; params.push(payment_method); }
 
   sql += ' ORDER BY created_at DESC';
 
-  const rows = db.prepare(sql).all(...params);
+  const currentPage = Math.max(1, parseInt(page) || 1);
+  const limitVal = Math.min(100, Math.max(1, parseInt(limit) || 50));
+  const offset = (currentPage - 1) * limitVal;
+
+  const total = db.prepare(countSql).get(...params).total;
+
+  sql += ' LIMIT ? OFFSET ?';
+  const rows = db.prepare(sql).all(...params, limitVal, offset);
   const parsed = rows.map(r => ({ ...r, items: JSON.parse(r.items) }));
-  res.json(parsed);
+
+  res.json({
+    data: parsed,
+    pagination: {
+      page: currentPage,
+      limit: limitVal,
+      total,
+      totalPages: Math.ceil(total / limitVal)
+    }
+  });
 });
 
 router.get('/history/filters', (req, res) => {

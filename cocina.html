@@ -11,7 +11,9 @@
         <div class="container">
             <a class="navbar-brand" href="#">Cocina</a>
             <div class="d-flex align-items-center gap-2">
+                <span class="text-light small"><strong id="waiterName"></strong></span>
                 <a href="dashboard.html" class="btn btn-outline-light btn-sm">Volver</a>
+                <button onclick="api.logout()" class="btn btn-outline-danger btn-sm">Cerrar Sesión</button>
             </div>
         </div>
     </nav>
@@ -19,6 +21,7 @@
     <div class="container py-4">
         <div class="row g-3" id="ordersContainer">
             <div class="col-12 text-center text-muted py-5">
+                <div class="spinner-border text-primary mb-2" role="status"></div>
                 <h5>Cargando pedidos...</h5>
             </div>
         </div>
@@ -26,7 +29,38 @@
 
     <script src="api.js"></script>
     <script>
-        if (!api.getToken()) { window.location.href = 'index.html'; }
+        if (!api.checkAuth()) return;
+        const user = api.getUser();
+        if (user) document.getElementById('waiterName').textContent = user.name;
+
+        function playNotificationSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = 800;
+                osc.type = 'sine';
+                gain.gain.value = 0.3;
+                osc.start();
+                setTimeout(() => { osc.stop(); ctx.close(); }, 200);
+            } catch {}
+        }
+
+        function connectSSE() {
+            try {
+                const evtSource = new EventSource(`${window.location.origin}/api/events`);
+                evtSource.addEventListener('new-order', () => {
+                    playNotificationSound();
+                    renderOrders();
+                });
+                evtSource.addEventListener('order-update', () => {
+                    renderOrders();
+                });
+                evtSource.onerror = () => {};
+            } catch {}
+        }
 
         function getTimeElapsed(createdAt) {
             const diff = Date.now() - new Date(createdAt).getTime();
@@ -70,7 +104,10 @@
                                                         ${o.items.map(i => `<li>${i.name} x${i.qty}</li>`).join('')}
                                                     </ul>
                                                     ${status === 'pending' ? `
-                                                        <button class="btn btn-sm btn-warning w-100 accept-order" data-id="${o.id}">Aceptar Pedido</button>
+                                                        <div class="d-grid gap-1">
+                                                            <button class="btn btn-sm btn-warning accept-order" data-id="${o.id}">Aceptar Pedido</button>
+                                                            <button class="btn btn-sm btn-outline-danger cancel-order" data-id="${o.id}">Cancelar</button>
+                                                        </div>
                                                     ` : ''}
                                                     ${status === 'preparing' ? `
                                                         <button class="btn btn-sm btn-success w-100 ready-order" data-id="${o.id}">Marcar Listo</button>
@@ -104,6 +141,12 @@
                     await api.orders.updateStatus(id, 'ready');
                 } else if (e.target.closest('.serve-order')) {
                     await api.orders.updateStatus(id, 'served');
+                } else if (e.target.closest('.cancel-order')) {
+                    if (confirm('¿Cancelar este pedido?')) {
+                        await api.orders.cancel(id);
+                    } else {
+                        return;
+                    }
                 } else {
                     return;
                 }
@@ -115,6 +158,7 @@
 
         renderOrders();
         setInterval(renderOrders, 5000);
+        connectSSE();
     </script>
 </body>
 </html>
